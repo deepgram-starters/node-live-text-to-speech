@@ -1,5 +1,7 @@
 # Node Live Text-to-Speech Starter
 
+[![Discord](https://dcbadge.vercel.app/api/server/xWRaCDBtW4?style=flat)](https://discord.gg/xWRaCDBtW4)
+
 Get started using Deepgram's Live Text-to-Speech with this Node demo app.
 
 The flow of this sample is:
