@@ -13,19 +13,19 @@ const deepgramApiKey = process.env.DEEPGRAM_API_KEY;
 
 // WAV header to be sent once per text message
 const wavHeader = Buffer.from([
-    0x52, 0x49, 0x46, 0x46, // "RIFF"
-    0x00, 0x00, 0x00, 0x00, // Placeholder for file size
-    0x57, 0x41, 0x56, 0x45, // "WAVE"
-    0x66, 0x6D, 0x74, 0x20, // "fmt "
-    0x10, 0x00, 0x00, 0x00, // Chunk size (16)
-    0x01, 0x00,             // Audio format (1 for PCM)
-    0x01, 0x00,             // Number of channels (1)
-    0x80, 0xBB, 0x00, 0x00, // Sample rate (48000)
-    0x00, 0xEE, 0x02, 0x00, // Byte rate (48000 * 2)
-    0x02, 0x00,             // Block align (2)
-    0x10, 0x00,             // Bits per sample (16)
-    0x64, 0x61, 0x74, 0x61, // "data"
-    0x00, 0x00, 0x00, 0x00  // Placeholder for data size
+  0x52, 0x49, 0x46, 0x46, // "RIFF"
+  0x00, 0x00, 0x00, 0x00, // Placeholder for file size
+  0x57, 0x41, 0x56, 0x45, // "WAVE"
+  0x66, 0x6D, 0x74, 0x20, // "fmt "
+  0x10, 0x00, 0x00, 0x00, // Chunk size (16)
+  0x01, 0x00,             // Audio format (1 for PCM)
+  0x01, 0x00,             // Number of channels (1)
+  0x80, 0xBB, 0x00, 0x00, // Sample rate (48000)
+  0x00, 0xEE, 0x02, 0x00, // Byte rate (48000 * 2)
+  0x02, 0x00,             // Block align (2)
+  0x10, 0x00,             // Bits per sample (16)
+  0x64, 0x61, 0x74, 0x61, // "data"
+  0x00, 0x00, 0x00, 0x00  // Placeholder for data size
 ]);
 
 // Serve static files from the 'public' directory
@@ -55,7 +55,7 @@ wss.on('connection', (ws) => {
     try {
       const data = JSON.parse(message);
       const text = data.text;
-      const model = data.model || 'aura-asteria-en';
+      const model = data.model || 'aura-2-thalia-en';
 
       if (!text) {
         console.log('No text provided');
