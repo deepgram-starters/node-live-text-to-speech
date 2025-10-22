@@ -36,12 +36,21 @@ const server = app.listen(port, () => {
   console.log(`Express server listening on port ${port}`);
 });
 
-// Create the WebSocket server
-const wss = new WebSocket.Server({ server });
+// Create the WebSocket server with specific path
+const wss = new WebSocket.Server({
+  server,
+  path: '/live-tts/stream'
+});
 
 // Handle WebSocket connections
-wss.on('connection', (ws) => {
-  console.log('Client connected');
+wss.on('connection', (ws, req) => {
+  console.log('Client connected to /live-tts/stream');
+
+  // Parse query parameters from the WebSocket URL
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const model = url.searchParams.get('model') || 'aura-asteria-en';
+
+  console.log(`Query params - model: ${model}`);
 
   // Instantiate Deepgram SDK
   const deepgram = createClient(deepgramApiKey);
@@ -55,35 +64,83 @@ wss.on('connection', (ws) => {
     try {
       const data = JSON.parse(message);
       const text = data.text;
-      const model = data.model || 'aura-2-thalia-en';
 
+      // Validate required fields
       if (!text) {
         console.log('No text provided');
+        ws.send(JSON.stringify({
+          type: "Error",
+          error: {
+            type: "ValidationError",
+            code: "INVALID_TEXT",
+            message: "Missing required text field",
+            details: { required: ["text"] }
+          }
+        }));
+        return;
+      }
+
+      // Validate message type
+      if (data.type !== "Speak") {
+        console.log('Invalid message type');
+        ws.send(JSON.stringify({
+          type: "Error",
+          error: {
+            type: "ValidationError",
+            code: "INVALID_TEXT",
+            message: "Invalid message type",
+            details: { expected: "Speak", received: data.type }
+          }
+        }));
         return;
       }
 
       // Check if we already have a Deepgram socket
       if (!dgSocket) {
-        // Start the TTS connection
-        dgSocket = deepgram.speak.live({
-          model: model,
-          encoding: 'linear16',
-          sample_rate: 48000,
-        });
+        try {
+          // Start the TTS connection
+          dgSocket = deepgram.speak.live({
+            model: model,
+            encoding: 'linear16',
+            sample_rate: 48000,
+          });
+        } catch (error) {
+          console.error('Error creating Deepgram connection:', error);
+          ws.send(JSON.stringify({
+            type: 'Error',
+            error: {
+              type: 'ValidationError',
+              code: 'MODEL_NOT_FOUND',
+              message: 'Invalid model specified',
+              details: { model: model, originalError: error.message }
+            }
+          }));
+          return;
+        }
 
         // Set up event listeners
         dgSocket.on(LiveTTSEvents.Open, () => {
           console.log('Deepgram TTS WebSocket opened');
-
-          // Send 'Open' message to client
-          ws.send(JSON.stringify({ type: 'Open' }));
 
           // Send the text to Deepgram TTS
           dgSocket.sendText(text);
           dgSocket.flush();
         });
 
+        dgSocket.on(LiveTTSEvents.Metadata, (data) => {
+          console.log('Deepgram metadata received');
+          // Forward the actual metadata from Deepgram
+          ws.send(JSON.stringify({
+            type: 'Metadata',
+            request_id: data.request_id || 'unknown',
+            model_name: data.model_name || model,
+            model_version: data.model_version || 'latest',
+            model_uuid: data.model_uuid || 'unknown'
+          }));
+        });
+
         dgSocket.on(LiveTTSEvents.Audio, (data) => {
+          console.log('Received audio data from Deepgram, size:', data.length);
           if (lastSent < Date.now() - 3000) {
             console.log('Sending WAV header');
             ws.send(wavHeader);
@@ -91,7 +148,7 @@ wss.on('connection', (ws) => {
           }
 
           // Send audio data to client
-          console.log('Received audio data from Deepgram');
+          console.log('Sending audio data to client, size:', data.length);
           ws.send(data);
         });
 
@@ -111,7 +168,15 @@ wss.on('connection', (ws) => {
         dgSocket.on(LiveTTSEvents.Error, (error) => {
           console.error('Deepgram TTS WebSocket error:', error);
           // Send 'Error' message to client
-          ws.send(JSON.stringify({ type: 'Error', error: error.message }));
+          ws.send(JSON.stringify({
+            type: 'Error',
+            error: {
+              type: 'ConnectionError',
+              code: 'MODEL_NOT_FOUND',
+              message: 'Invalid model specified',
+              details: { originalError: error.message || 'Model not found' }
+            }
+          }));
         });
       } else {
         // If the Deepgram socket already exists, send the text
@@ -121,7 +186,15 @@ wss.on('connection', (ws) => {
 
     } catch (error) {
       console.error('Error processing message:', error);
-      ws.send(JSON.stringify({ type: 'Error', error: error.message }));
+      ws.send(JSON.stringify({
+        type: 'Error',
+        error: {
+          type: 'ValidationError',
+          code: 'INVALID_TEXT',
+          message: 'Invalid message format',
+          details: { originalError: error.message }
+        }
+      }));
     }
   });
 
