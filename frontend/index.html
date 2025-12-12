@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+  <!--
+  ============================================================================
+  LIVE TEXT-TO-SPEECH HTML STARTER - FRONTEND UI
+  ============================================================================
+
+  This is a complete live TTS interface built with:
+  - Pure HTML/CSS/JavaScript (no frameworks)
+  - Deepgram Design System for styling
+  - WebSocket for real-time audio generation
+  - Responsive layout with mobile-first design
+  - Queue-based generation with latency tracking
+
+  CUSTOMIZATION GUIDE:
+  1. Modify voice models in app.js (will be populated by user)
+  2. Change colors by overriding CSS variables in <style> section
+  3. Customize layout by modifying the structure below
+  4. Add features by extending app.js functions
+
+  ARCHITECTURE:
+  - Text input + model selection → WebSocket → Deepgram
+  - Audio chunks collected per-text → played when flushed
+  - Queue displays all generations with latency metrics
+-->
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Live text-to-speech demo using Deepgram"
+    />
+    <title>Deepgram Live Text-to-Speech</title>
+
+    <!-- ======================================================================
+       EXTERNAL DEPENDENCIES
+       ====================================================================== -->
+
+    <!-- Font Awesome - Icons used throughout the UI -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+      integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+
+    <!-- Deepgram Design System Styles - Core styling framework -->
+    <link
+      rel="stylesheet"
+      href="./node_modules/@deepgram/styles/dist/deepgram.css"
+    />
+
+    <!-- Application JavaScript - Main application logic -->
+    <script type="module" src="/main.js"></script>
+
+    <!-- ======================================================================
+       CUSTOM STYLES - Using only Deepgram design system classes
+       ====================================================================== -->
+
+    <style>
+      /* ===================================================================
+       LAYOUT & BACKGROUND
+       =================================================================== */
+
+      body {
+        background: var(--dg-charcoal, #1a1a1f);
+        margin: 0;
+        padding: 0;
+      }
+
+      /* ===================================================================
+       QUEUE ITEM STYLING
+       =================================================================== */
+
+      .queue-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .queue-item {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--dg-pebble, #4e4e52);
+        background: var(--dg-background, #0b0b0c);
+        transition: all 0.2s;
+      }
+
+      .queue-item--generating {
+        border-color: var(--dg-primary, #13ef95);
+        box-shadow: 0 0 0 1px var(--dg-primary, #13ef95);
+      }
+
+      .queue-item--complete {
+        border-color: var(--dg-primary, #13ef95);
+      }
+
+      .queue-item--error {
+        border-color: var(--dg-danger, #ff3b3b);
+      }
+
+      .queue-item__header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .queue-item__text {
+        flex: 1;
+        color: var(--dg-text, #fbfbff);
+        font-size: 0.9rem;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+
+      .queue-item__remove {
+        background: none;
+        border: none;
+        color: var(--dg-muted, #949498);
+        cursor: pointer;
+        padding: 0.25rem;
+        font-size: 1rem;
+        transition: color 0.2s;
+      }
+
+      .queue-item__remove:hover {
+        color: var(--dg-danger, #ff3b3b);
+      }
+
+      .queue-item__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        font-size: 0.75rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .queue-item__model {
+        color: var(--dg-primary, #13ef95);
+        font-family: monospace;
+      }
+
+      .queue-item__status {
+        color: var(--dg-muted, #949498);
+      }
+
+      .queue-item__status--generating {
+        color: var(--dg-primary, #13ef95);
+      }
+
+      .queue-item__status--complete {
+        color: var(--dg-primary, #13ef95);
+      }
+
+      .queue-item__status--error {
+        color: var(--dg-danger, #ff3b3b);
+      }
+
+      .queue-item__latency {
+        color: var(--dg-accent, #8a3ffc);
+        font-weight: 600;
+      }
+
+      .queue-item__actions {
+        display: flex;
+        gap: 0.5rem;
+      }
+
+      /* ===================================================================
+       EMPTY STATE
+       =================================================================== */
+
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 20vh;
+        text-align: center;
+        padding: 3rem 2rem;
+        color: var(--dg-muted, #949498);
+      }
+
+      .empty-state-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+      }
+
+      .empty-state-text {
+        font-size: 0.9rem;
+        line-height: 1.6;
+      }
+
+      /* ===================================================================
+       FORM LAYOUT - Side-by-side text input and model selection
+       =================================================================== */
+
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      @media (min-width: 768px) {
+        .input-row {
+          grid-template-columns: 2fr 1fr;
+        }
+      }
+
+      .input-column {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      /* ===================================================================
+       UTILITIES
+       =================================================================== */
+
+      .hidden {
+        display: none !important;
+      }
+
+      .spinning {
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- ======================================================================
+       MAIN CONTAINER
+       ====================================================================== -->
+
+    <div
+      class="dg-container"
+      style="max-width: 1200px; margin: 0 auto; padding: 2rem 1rem"
+    >
+      <!-- ====================================================================
+         HEADER
+         ==================================================================== -->
+
+      <header
+        style="
+          margin-bottom: 2rem;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        "
+      >
+        <div>
+          <h1 class="dg-heading-1" style="margin: 0 0 0.5rem 0">
+            <i
+              class="fas fa-microphone-lines"
+              style="color: var(--dg-primary, #13ef95)"
+            ></i>
+            Deepgram Live TTS
+          </h1>
+          <p class="dg-text-muted" style="margin: 0">
+            Real-time text-to-speech with WebSocket streaming
+          </p>
+        </div>
+        <a
+          href="https://developers.deepgram.com/docs/tts-ws"
+          target="_blank"
+          class="dg-btn dg-btn--ghost dg-btn--sm"
+        >
+          <i class="fas fa-book"></i> Docs
+        </a>
+      </header>
+
+      <!-- ====================================================================
+         CONFIGURATION CARD
+         ==================================================================== -->
+
+      <div class="dg-card" style="margin-bottom: 2rem">
+        <div class="dg-card__header">
+          <h2 class="dg-card__title">
+            <i class="fas fa-sliders"></i>
+            Text Input Configuration
+          </h2>
+        </div>
+
+        <div class="dg-card__body">
+          <!-- Text Input (left) and Model Selection (right) -->
+          <div class="input-row">
+            <!-- Left column: Text input -->
+            <div class="input-column">
+              <label for="textInput" class="dg-label"> Text to Convert </label>
+              <textarea
+                id="textInput"
+                class="dg-input"
+                rows="4"
+                placeholder="Enter the text you want to convert to speech..."
+                style="resize: vertical; font-family: inherit"
+              ></textarea>
+            </div>
+            <!-- Right column: Model selection + Generate button -->
+            <div class="input-column">
+              <label for="modelSelect" class="dg-label"> Voice Model </label>
+              <select id="modelSelect" class="dg-select">
+                <option value="aura-2-thalia-en">
+                  Thalia (Female American English)
+                </option>
+                <option value="aura-2-theia-en">
+                  Theia (Female Australian English)
+                </option>
+                <option value="aura-2-pandora-en">
+                  Helena (Female British English)
+                </option>
+                <option value="aura-2-celeste-es">
+                  Celeste (Female Colombian Spanish)
+                </option>
+                <option value="aura-2-mars-en">
+                  Mars (Male American English)
+                </option>
+                <option value="aura-2-draco-en">
+                  Draco (Male British English)
+                </option>
+                <option value="aura-2-hyperion-en">
+                  Hyperion (Male Australian English)
+                </option>
+                <option value="aura-2-sirio-es">
+                  Sirio (Male Mexican Spanish)
+                </option>
+              </select>
+
+              <button
+                id="generateBtn"
+                class="dg-btn dg-btn--primary"
+                style="margin-top: auto"
+              >
+                <i class="fas fa-play"></i>
+                Generate Audio
+              </button>
+            </div>
+          </div>
+
+          <!-- Status indicator -->
+          <div
+            id="statusContainer"
+            class="dg-status-banner dg-status-banner--info hidden"
+            style="margin-top: 1rem"
+          >
+            <i id="statusIcon" class="fas fa-circle-info"></i>
+            <span id="statusMessage">Ready</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====================================================================
+         GENERATION QUEUE CARD
+         ==================================================================== -->
+
+      <div class="dg-card">
+        <div
+          class="dg-card__header"
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+          "
+        >
+          <h2 class="dg-card__title">
+            <i class="fas fa-list"></i>
+            Generation Queue
+            <span
+              id="queueCount"
+              class="dg-badge dg-badge--secondary"
+              style="margin-left: 0.5rem"
+              >0</span
+            >
+          </h2>
+          <button
+            id="clearQueueBtn"
+            class="dg-btn dg-btn--ghost dg-btn--sm hidden"
+          >
+            <i class="fas fa-trash"></i>
+            Clear All
+          </button>
+        </div>
+
+        <div class="dg-card__body">
+          <!-- Empty state (shown when queue is empty) -->
+          <div id="emptyState" class="empty-state">
+            <div class="empty-state-icon">
+              <i class="fas fa-waveform-lines"></i>
+            </div>
+            <div class="empty-state-text">
+              <p
+                style="
+                  margin: 0 0 0.5rem 0;
+                  font-size: 1rem;
+                  color: var(--dg-text, #fbfbff);
+                "
+              >
+                No audio generated yet
+              </p>
+              <p style="margin: 0">
+                Enter some text above and click "Generate Audio" to begin
+              </p>
+            </div>
+          </div>
+
+          <!-- Queue list (populated dynamically by app.js) -->
+          <div id="queueList" class="queue-list hidden">
+            <!-- Queue items will be inserted here by JavaScript -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======================================================================
+       HIDDEN AUDIO ELEMENT (for playback)
+       ====================================================================== -->
+
+    <audio id="audioPlayer" style="display: none"></audio>
+  </body>
+</html>
