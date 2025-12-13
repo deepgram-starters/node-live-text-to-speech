@@ -90,11 +90,49 @@ wss.on('connection', (clientWs, request) => {
   const deepgram = createClient(DEEPGRAM_API_KEY);
   let deepgramConnection = null;
 
-  deepgramConnection = deepgram.speak.live({
-    model: model,
-    encoding: 'linear16',
-    sample_rate: 48000,
-  });
+  // Try-catch: Create Deepgram connection
+  // This catches errors during connection setup (bad model, API key issues, etc.)
+  try {
+    deepgramConnection = deepgram.speak.live({
+      model: model,
+      encoding: 'linear16',
+      sample_rate: 48000,
+    });
+  } catch (error) {
+    console.error('❌ Error creating Deepgram connection:', error);
+
+    // Determine error code based on error type
+    let errorCode = 'CONNECTION_FAILED';
+    let errorMessage = 'Failed to establish connection to Deepgram';
+
+    if (error.message?.includes('model')) {
+      errorCode = 'MODEL_NOT_FOUND';
+      errorMessage = `Invalid model: ${model}. Please check the model name.`;
+    } else if (error.message?.includes('auth') || error.message?.includes('key')) {
+      errorCode = 'CONNECTION_FAILED';
+      errorMessage = 'Authentication failed. Please check your API key.';
+    }
+
+    const errorResponse = {
+      type: 'Error',
+      error: {
+        type: 'ConnectionError',
+        code: errorCode,
+        message: errorMessage,
+        details: {
+          reason: error.message,
+          hint: errorCode === 'CONNECTION_FAILED'
+            ? 'Verify DEEPGRAM_API_KEY is set correctly in .env'
+            : 'Check available models at https://developers.deepgram.com/docs/tts-models'
+        }
+      }
+    };
+
+    clientWs.send(JSON.stringify(errorResponse));
+    clientWs.close(1011, 'Deepgram connection failed');
+    activeConnections.delete(clientWs);
+    return;
+  }
 
   /**
    * Handle the 'Open' event from Deepgram
@@ -118,31 +156,14 @@ wss.on('connection', (clientWs, request) => {
   deepgramConnection.on(LiveTTSEvents.Metadata, (data) => {
     console.log('📋 Received metadata from Deepgram');
 
-    /**
-     * TODO:USER - Format and send the metadata message to the client
-     *
-     * LEARNING OBJECTIVE: Understand the contract's Metadata message format
-     *
-     * HINT: The contract requires these fields:
-     * - type: "Metadata"
-     * - request_id: from data.request_id
-     * - model_name: from data (check the Deepgram response structure)
-     * - model_version: from data
-     * - model_uuid: from data
-     *
-     * REFERENCE: Check starter-contracts/interfaces/live-tts/asyncapi.yml
-     *
-     * Example structure:
-     * const metadataMessage = {
-     *   type: 'Metadata',
-     *   request_id: data.request_id,
-     *   model_name: data.???,
-     *   // ... add the rest
-     * };
-     * clientWs.send(JSON.stringify(metadataMessage));
-     */
-
-    // TODO:USER - Send formatted metadata to client
+    const metadataMessage = {
+      type: 'Metadata',
+      request_id: data.request_id,
+      model_name: data.model_name,
+      model_version: data.model_version,
+      model_uuid: data.model_uuid,
+    };
+    clientWs.send(JSON.stringify(metadataMessage));
   });
 
   /**
@@ -200,36 +221,11 @@ wss.on('connection', (clientWs, request) => {
   deepgramConnection.on(LiveTTSEvents.Error, (error) => {
     console.error('❌ Deepgram error:', error);
 
-    /**
-     * TODO:USER - Format and send the error message per the contract
-     *
-     * LEARNING OBJECTIVE: Understand error message formatting
-     *
-     * HINT: The contract requires this structure:
-     * {
-     *   type: "Error",
-     *   error: {
-     *     type: string (error category),
-     *     code: string (machine-readable code),
-     *     message: string (human-readable message)
-     *   }
-     * }
-     *
-     * REFERENCE: Check starter-contracts/interfaces/live-tts/schema/error.json
-     *
-     * You'll need to determine the appropriate error code based on the error:
-     * - INVALID_TEXT
-     * - MODEL_NOT_FOUND
-     * - CONNECTION_FAILED
-     * - AUDIO_GENERATION_ERROR
-     */
-
-    // TODO:USER - Format and send error message
     const errorMessage = {
       type: 'Error',
       error: {
         type: 'TTS_ERROR',
-        code: 'AUDIO_GENERATION_ERROR', // Adjust based on actual error
+        code: 'AUDIO_GENERATION_ERROR',
         message: error.message || 'Unknown error occurred'
       }
     };
@@ -273,25 +269,8 @@ wss.on('connection', (clientWs, request) => {
         }
 
         console.log(`📝 Sending text to Deepgram: "${data.text.substring(0, 50)}..."`);
-
-        /**
-         * TODO:USER - Send the text to Deepgram and flush
-         *
-         * LEARNING OBJECTIVE: Understand how live TTS works
-         *
-         * HINT: You need to:
-         * 1. Send the text using deepgramConnection.sendText(data.text)
-         * 2. Call deepgramConnection.flush() to force audio generation
-         *
-         * WHY FLUSH? Deepgram buffers text to optimize audio quality.
-         * Calling flush() tells it "I'm done sending text, generate audio now!"
-         *
-         * REFERENCE: https://developers.deepgram.com/docs/tts-ws-flush
-         */
-
-        // TODO:USER - Send text and flush
-        // deepgramConnection.sendText(data.text);
-        // deepgramConnection.flush();
+        deepgramConnection.sendText(data.text);
+        deepgramConnection.flush();
       }
 
       /**

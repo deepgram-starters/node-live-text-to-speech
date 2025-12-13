@@ -233,10 +233,6 @@ function connectWebSocket(text, model) {
   }
 }
 
-// ============================================================================
-// MESSAGE HANDLERS
-// ============================================================================
-
 /**
  * Handle JSON messages from the server
  * These include: Open, Metadata, Flushed, Close, Error
@@ -284,30 +280,13 @@ function handleJsonMessage(message) {
 function handleMetadata(metadata) {
   console.log('📋 Metadata received:', metadata);
 
-  /**
-   * TODO:USER - Store the metadata in state
-   *
-   * LEARNING OBJECTIVE: Understand what metadata Deepgram provides
-   *
-   * HINT: The metadata contains useful information like:
-   * - request_id: Unique ID for this generation
-   * - model_name: Which model is being used
-   * - model_version: Version of the model
-   * - model_uuid: Unique identifier for the model
-   *
-   * You should store this in: state.currentGeneration.metadata
-   *
-   * Example:
-   * state.currentGeneration.metadata = {
-   *   request_id: metadata.request_id,
-   *   model_name: metadata.model_name,
-   *   // ... add the rest
-   * };
-   */
-
-  // TODO:USER - Store metadata here
-  state.currentGeneration.metadata = metadata;
-}
+  state.currentGeneration.metadata = {
+    request_id: metadata.request_id,
+    model_name: metadata.model_name,
+    model_version: metadata.model_version,
+    model_uuid: metadata.model_uuid,
+  };
+};
 
 /**
  * Handle incoming audio chunk (binary data)
@@ -319,24 +298,7 @@ function handleAudioChunk(arrayBuffer) {
   const chunkSize = arrayBuffer.byteLength;
   console.log(`🔊 Received audio chunk: ${chunkSize} bytes`);
 
-  /**
-   * TODO:USER - Convert ArrayBuffer to Blob and store it
-   *
-   * LEARNING OBJECTIVE: Understand binary data handling in JavaScript
-   *
-   * HINT: Audio data comes as ArrayBuffer, but we want to store it as Blob
-   * Blobs are easier to work with for audio playback
-   *
-   * Steps:
-   * 1. Convert ArrayBuffer to Blob with type 'audio/wav'
-   * 2. Push the Blob to state.currentGeneration.audioChunks array
-   *
-   * Example:
-   * const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
-   * state.currentGeneration.audioChunks.push(blob);
-   */
-
-  // TODO:USER - Convert and store audio chunk
+  // Converts and store audio chunk
   const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
   state.currentGeneration.audioChunks.push(blob);
 
@@ -416,10 +378,6 @@ function handleError(error) {
   resetUI();
 }
 
-// ============================================================================
-// AUDIO PLAYBACK
-// ============================================================================
-
 /**
  * Play audio for a specific queue item
  *
@@ -435,28 +393,7 @@ function playAudio(itemId) {
 
   console.log(`🔊 Playing audio for item ${itemId}`);
 
-  /**
-   * TODO:USER - Implement audio playback
-   *
-   * LEARNING OBJECTIVE: Understand how to play audio from a Blob
-   *
-   * HINT: Steps to play audio:
-   * 1. Create an object URL from the Blob using URL.createObjectURL()
-   * 2. Set audioPlayer.src to this URL
-   * 3. Call audioPlayer.play()
-   * 4. (Optional) Clean up the object URL when done
-   *
-   * Example:
-   * const audioUrl = URL.createObjectURL(item.audioBlob);
-   * audioPlayer.src = audioUrl;
-   * audioPlayer.play();
-   *
-   * audioPlayer.onended = () => {
-   *   URL.revokeObjectURL(audioUrl); // Clean up
-   * };
-   */
-
-  // TODO:USER - Implement playback here
+  // Creates an object URL from the Blob and plays the audio
   const audioUrl = URL.createObjectURL(item.audioBlob);
   audioPlayer.src = audioUrl;
   audioPlayer.play();
@@ -466,10 +403,6 @@ function playAudio(itemId) {
     console.log('✅ Playback complete');
   };
 }
-
-// ============================================================================
-// QUEUE MANAGEMENT
-// ============================================================================
 
 /**
  * Update the queue display in the UI
@@ -555,10 +488,6 @@ function handleClearQueue() {
   updateQueueDisplay();
 }
 
-// ============================================================================
-// UI HELPERS
-// ============================================================================
-
 /**
  * Show a status message to the user
  *
@@ -624,9 +553,6 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// ============================================================================
-// GLOBAL FUNCTIONS (called from HTML onclick)
-// ============================================================================
 
 // Make these functions available globally for onclick handlers
 window.playAudio = playAudio;
