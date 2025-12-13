@@ -3,7 +3,7 @@
  * LIVE TEXT-TO-SPEECH - FRONTEND APPLICATION
  * ============================================================================
  *
- * This vanilla JavaScript application provides a real-time TTS interface
+ * ThisJavaScript application provides a real-time TTS interface
  * using WebSockets to communicate with Deepgram's live TTS API.
  *
  * KEY FEATURES:
@@ -64,11 +64,10 @@ let queueList;
 let audioPlayer;
 
 /**
- * Initialize the application when the DOM is ready
- * This is the entry point for our app
+ * Initializes the application when the DOM is ready
  */
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('🚀 Initializing Live TTS application...');
+  console.log('Initializing Live TTS application...');
 
   // Cache DOM elements
   textInput = document.getElementById('textInput');
@@ -90,12 +89,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize UI
   updateQueueDisplay();
 
-  console.log('✅ Application initialized');
+  console.log('Application initialized');
 });
 
 /**
- * Handle the "Generate Audio" button click
- * This is the main entry point for audio generation
+ * Handles the "Generate Audio" button click
  */
 function handleGenerate() {
   const text = textInput.value.trim();
@@ -112,7 +110,7 @@ function handleGenerate() {
     return;
   }
 
-  console.log('🎙️ Starting generation:', { text: text.substring(0, 50) + '...', model });
+  console.log('Starting generation:', { text: text.substring(0, 50) + '...', model });
 
   // Reset current generation state
   state.currentGeneration = {
@@ -143,7 +141,7 @@ function connectWebSocket(text, model) {
   try {
     // Construct WebSocket URL with model parameter
     const wsUrl = `${WS_BASE_URL}${WS_ENDPOINT}?model=${encodeURIComponent(model)}`;
-    console.log('🔌 Connecting to WebSocket:', wsUrl);
+    console.log('Connecting to WebSocket:', wsUrl);
 
     state.isConnecting = true;
     state.websocket = new WebSocket(wsUrl);
@@ -156,18 +154,13 @@ function connectWebSocket(text, model) {
      * Fires when connection is successfully established
      */
     state.websocket.onopen = () => {
-      console.log('✅ WebSocket connected');
+      console.log('WebSocket connected to server');
       state.isConnecting = false;
-      showStatus('info', 'Generating audio...');
+      showStatus('info', 'Waiting for Deepgram to be ready...');
 
-      // Send the text to Deepgram for TTS conversion
-      const message = {
-        type: 'Speak',
-        text: text
-      };
-
-      console.log('📤 Sending text to Deepgram...');
-      state.websocket.send(JSON.stringify(message));
+      // NOTE: We don't send the Speak message here!
+      // We wait for the server to send an "Open" event, which indicates
+      // that the Deepgram connection is ready. Only then do we send text.
     };
 
     /**
@@ -186,7 +179,7 @@ function connectWebSocket(text, model) {
           const message = JSON.parse(event.data);
           handleJsonMessage(message);
         } catch (error) {
-          console.error('❌ Failed to parse message:', error);
+          console.error('Failed to parse message:', error);
         }
       }
     };
@@ -205,7 +198,7 @@ function connectWebSocket(text, model) {
         // Server error - error message was already shown
         // Don't overwrite it with a generic message
       } else if (event.code === 1000) {
-        console.log('✅ Normal closure');
+        console.log('Normal closure');
       } else {
         showStatus('warning', `Connection closed unexpectedly (code: ${event.code})`);
       }
@@ -218,7 +211,7 @@ function connectWebSocket(text, model) {
      * Fires when there's a WebSocket error
      */
     state.websocket.onerror = (error) => {
-      console.error('❌ WebSocket error:', error);
+      console.error('WebSocket error:', error);
       showStatus('error', 'Connection error occurred');
       state.isConnecting = false;
       state.isGenerating = false;
@@ -226,7 +219,7 @@ function connectWebSocket(text, model) {
     };
 
   } catch (error) {
-    console.error('❌ Failed to create WebSocket:', error);
+    console.error('Failed to create WebSocket:', error);
     showStatus('error', 'Failed to connect: ' + error.message);
     state.isGenerating = false;
     resetUI();
@@ -240,11 +233,20 @@ function connectWebSocket(text, model) {
  * @param {Object} message - Parsed JSON message
  */
 function handleJsonMessage(message) {
-  console.log('📨 Received message:', message.type);
+  console.log('Received message:', message.type);
 
   switch (message.type) {
     case 'Open':
-      console.log('✅ Connection opened');
+      console.log(' Deepgram is ready! Sending text...');
+      showStatus('info', 'Generating audio...');
+
+      // end the text to Deepgram, since Deepgram is ready
+      const speakMessage = {
+        type: 'Speak',
+        text: state.currentGeneration.text
+      };
+      console.log('📤 Sending text to Deepgram...');
+      state.websocket.send(JSON.stringify(speakMessage));
       break;
 
     case 'Metadata':
@@ -256,7 +258,7 @@ function handleJsonMessage(message) {
       break;
 
     case 'Close':
-      console.log('👋 Server closed connection');
+      console.log('Server closed connection');
       if (state.websocket) {
         state.websocket.close(1000, 'Server closed');
       }
@@ -267,7 +269,7 @@ function handleJsonMessage(message) {
       break;
 
     default:
-      console.warn('⚠️ Unknown message type:', message.type);
+      console.warn(' Unknown message type:', message.type);
   }
 }
 
@@ -278,7 +280,7 @@ function handleJsonMessage(message) {
  * @param {Object} metadata - Metadata object from Deepgram
  */
 function handleMetadata(metadata) {
-  console.log('📋 Metadata received:', metadata);
+  console.log('Metadata received:', metadata);
 
   state.currentGeneration.metadata = {
     request_id: metadata.request_id,
@@ -296,7 +298,7 @@ function handleMetadata(metadata) {
  */
 function handleAudioChunk(arrayBuffer) {
   const chunkSize = arrayBuffer.byteLength;
-  console.log(`🔊 Received audio chunk: ${chunkSize} bytes`);
+  console.log(`Received audio chunk: ${chunkSize} bytes`);
 
   // Converts and store audio chunk
   const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
@@ -308,19 +310,63 @@ function handleAudioChunk(arrayBuffer) {
 }
 
 /**
+ * Create a WAV header for raw PCM audio data
+ * @param {number} dataSize - Size of the PCM audio data in bytes
+ * @returns {Uint8Array} - WAV header as a byte array
+ */
+function createWavHeader(dataSize) {
+  const sampleRate = 48000;  // Must match server.js encoding settings
+  const numChannels = 1;     // Mono audio
+  const bitsPerSample = 16;  // 16-bit PCM (linear16)
+  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+  const blockAlign = numChannels * (bitsPerSample / 8);
+  const fileSize = 36 + dataSize; // 44 byte header - 8 bytes + data size
+
+  const header = new Uint8Array(44);
+  const view = new DataView(header.buffer);
+
+  // "RIFF" chunk descriptor
+  view.setUint32(0, 0x52494646, false); // "RIFF"
+  view.setUint32(4, fileSize, true);    // File size - 8
+  view.setUint32(8, 0x57415645, false); // "WAVE"
+
+  // "fmt " sub-chunk
+  view.setUint32(12, 0x666d7420, false); // "fmt "
+  view.setUint32(16, 16, true);          // Subchunk size (16 for PCM)
+  view.setUint16(20, 1, true);           // Audio format (1 = PCM)
+  view.setUint16(22, numChannels, true); // Number of channels
+  view.setUint32(24, sampleRate, true);  // Sample rate
+  view.setUint32(28, byteRate, true);    // Byte rate
+  view.setUint16(32, blockAlign, true);  // Block align
+  view.setUint16(34, bitsPerSample, true); // Bits per sample
+
+  // "data" sub-chunk
+  view.setUint32(36, 0x64617461, false); // "data"
+  view.setUint32(40, dataSize, true);    // Data size
+
+  return header;
+}
+
+/**
  * Handle Flushed message from Deepgram
- * This means all audio chunks have been sent - time to play!
  */
 function handleFlushed() {
-  console.log('✅ All audio chunks received (Flushed)');
+  console.log('All audio chunks received (Flushed)');
 
   // Calculate latency
   const latency = Date.now() - state.currentGeneration.startTime;
-  console.log(`⏱️ Generation latency: ${latency}ms`);
+  console.log(`Generation latency: ${latency}ms`);
 
-  // Combine all audio chunks into a single Blob
-  const completeAudioBlob = new Blob(state.currentGeneration.audioChunks, { type: 'audio/wav' });
-  console.log(`🎵 Complete audio size: ${completeAudioBlob.size} bytes`);
+  // Calculate total size of raw PCM data
+  const pcmDataSize = state.currentGeneration.audioChunks.reduce((sum, blob) => sum + blob.size, 0);
+  console.log(`Raw PCM audio size: ${pcmDataSize} bytes`);
+
+  // Create WAV header for the PCM data
+  const wavHeader = createWavHeader(pcmDataSize);
+
+  // Combine WAV header + all PCM audio chunks into a proper WAV file
+  const completeAudioBlob = new Blob([wavHeader, ...state.currentGeneration.audioChunks], { type: 'audio/wav' });
+  console.log(`Complete WAV file size: ${completeAudioBlob.size} bytes (${wavHeader.length} byte header + ${pcmDataSize} byte data)`);
 
   // Add to queue
   const queueItem = {
@@ -357,13 +403,12 @@ function handleFlushed() {
 }
 
 /**
- * Handle Error message from server
- * Display error clearly to the user
+ * Handle Error message from server to display error clearly
  *
  * @param {Object} error - Error object with type, code, message
  */
 function handleError(error) {
-  console.error('❌ Error from server:', error);
+  console.error('Error from server:', error);
 
   const errorMessage = error.message || 'An unknown error occurred';
   showStatus('error', `Error: ${errorMessage}`);
@@ -387,7 +432,7 @@ function playAudio(itemId) {
   const item = state.queue.find(q => q.id === itemId);
 
   if (!item || !item.audioBlob) {
-    console.error('❌ No audio blob found for item:', itemId);
+    console.error('No audio blob found for item:', itemId);
     return;
   }
 
@@ -400,7 +445,7 @@ function playAudio(itemId) {
 
   audioPlayer.onended = () => {
     URL.revokeObjectURL(audioUrl);
-    console.log('✅ Playback complete');
+    console.log('Playback complete');
   };
 }
 
@@ -474,7 +519,7 @@ function updateQueueDisplay() {
  * @param {number} itemId - ID of item to remove
  */
 function removeQueueItem(itemId) {
-  console.log('🗑️ Removing queue item:', itemId);
+  console.log('Removing queue item:', itemId);
   state.queue = state.queue.filter(item => item.id !== itemId);
   updateQueueDisplay();
 }
@@ -483,7 +528,7 @@ function removeQueueItem(itemId) {
  * Clear all items from the queue
  */
 function handleClearQueue() {
-  console.log('🗑️ Clearing entire queue');
+  console.log('Clearing entire queue');
   state.queue = [];
   updateQueueDisplay();
 }
