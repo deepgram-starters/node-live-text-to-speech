@@ -179,19 +179,20 @@ wss.on('connection', (clientWs, request) => {
   });
 
   /**
-   * DEBUG: Catch-all handler for unhandled events
-   * This helps us see if audio is coming through a different event
+   * Catch-all handler for unhandled events
+   * Handles special messages like 'Cleared' that don't have dedicated events
    */
   deepgramConnection.on(LiveTTSEvents.Unhandled, (data) => {
-    console.log('⚠️ UNHANDLED EVENT:', data);
-  });
+    console.log('Unhandled event:', data);
 
-  /**
-   * DEBUG: Warning handler
-   * This shows any warnings from Deepgram
-   */
-  deepgramConnection.on(LiveTTSEvents.Warning, (warning) => {
-    console.log('⚠️ WARNING:', warning);
+    // Handle Cleared message from Clear command
+    if (data.type === 'Cleared') {
+      console.log('Deepgram buffer cleared, sequence_id:', data.sequence_id);
+      clientWs.send(JSON.stringify({
+        type: 'Cleared',
+        sequence_id: data.sequence_id
+      }));
+    }
   });
 
   /**
@@ -275,7 +276,7 @@ wss.on('connection', (clientWs, request) => {
             type: 'Error',
             error: {
               type: 'CONNECTION_ERROR',
-              code: 'NOT_READY',
+              code: 'CONNECTION_FAILED',
               message: 'Deepgram connection is not ready yet. Please wait for the Open event.'
             }
           };

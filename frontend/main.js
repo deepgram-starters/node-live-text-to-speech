@@ -49,11 +49,13 @@ const state = {
   // Queue of completed generations
   queue: [],                 // Array of { id, text, model, audioBlob, latency, status }
   nextId: 1,                 // Auto-incrementing ID for queue items
+  currentlyPlayingId: null,  // ID of the currently playing audio item
 };
 
 let textInput;
 let modelSelect;
 let generateBtn;
+let cancelBtn;
 let statusContainer;
 let statusIcon;
 let statusMessage;
@@ -73,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
   textInput = document.getElementById('textInput');
   modelSelect = document.getElementById('modelSelect');
   generateBtn = document.getElementById('generateBtn');
+  cancelBtn = document.getElementById('cancelBtn');
   statusContainer = document.getElementById('statusContainer');
   statusIcon = document.getElementById('statusIcon');
   statusMessage = document.getElementById('statusMessage');
@@ -84,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Set up event listeners
   generateBtn.addEventListener('click', handleGenerate);
+  cancelBtn.addEventListener('click', handleCancel);
   clearQueueBtn.addEventListener('click', handleClearQueue);
 
   // Initialize UI
@@ -125,10 +129,58 @@ function handleGenerate() {
   state.isGenerating = true;
   generateBtn.disabled = true;
   generateBtn.innerHTML = '<i class="fas fa-spinner spinning"></i> Generating...';
+  cancelBtn.hidden = false;
   showStatus('info', 'Connecting to Deepgram...');
 
   // Start WebSocket connection
   connectWebSocket(text, model);
+}
+
+/**
+ * Cancel the current audio generation
+ * Sends Clear message to Deepgram to stop audio generation immediately
+ */
+function handleCancel() {
+  console.log('Cancelling generation...');
+
+  // Send Clear message to Deepgram to stop audio generation
+  if (state.websocket && state.websocket.readyState === WebSocket.OPEN) {
+    try {
+      const clearMessage = {
+        type: 'Clear'
+      };
+      console.log('Sending Clear message to stop audio generation');
+      state.websocket.send(JSON.stringify(clearMessage));
+
+      // Close WebSocket after a brief delay to allow Clear to be processed
+      setTimeout(() => {
+        if (state.websocket) {
+          state.websocket.close(1000, 'User cancelled');
+          state.websocket = null;
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error sending Clear message:', error);
+      // If error, just close immediately
+      state.websocket.close(1000, 'User cancelled');
+      state.websocket = null;
+    }
+  }
+
+  // Reset state
+  state.isGenerating = false;
+  state.isConnecting = false;
+  state.currentGeneration = {
+    text: '',
+    model: '',
+    audioChunks: [],
+    startTime: null,
+    metadata: null,
+  };
+
+  // Update UI
+  resetUI();
+  showStatus('warning', 'Generation cancelled by user');
 }
 
 /**
@@ -257,6 +309,11 @@ function handleJsonMessage(message) {
       handleFlushed();
       break;
 
+    case 'Cleared':
+      console.log('Deepgram buffer cleared, sequence_id:', message.sequence_id);
+      // Buffer cleared successfully - audio generation stopped
+      break;
+
     case 'Close':
       console.log('Server closed connection');
       if (state.websocket) {
@@ -353,13 +410,18 @@ function createWavHeader(dataSize) {
 function handleFlushed() {
   console.log('All audio chunks received (Flushed)');
 
-  // Calculate latency
+  // Calculate metrics
   const latency = Date.now() - state.currentGeneration.startTime;
-  console.log(`Generation latency: ${latency}ms`);
-
-  // Calculate total size of raw PCM data
+  const chunkCount = state.currentGeneration.audioChunks.length;
   const pcmDataSize = state.currentGeneration.audioChunks.reduce((sum, blob) => sum + blob.size, 0);
-  console.log(`Raw PCM audio size: ${pcmDataSize} bytes`);
+
+  // Calculate actual audio duration from PCM data
+  // Formula: bytes / (sample_rate * bytes_per_sample * channels)
+  // 48000 Hz, 16-bit (2 bytes), mono (1 channel)
+  const audioDurationSeconds = pcmDataSize / (48000 * 2 * 1);
+
+  console.log(`Generation latency: ${latency}ms`);
+  console.log(`Chunks: ${chunkCount} • Audio duration: ${audioDurationSeconds.toFixed(2)}s • PCM size: ${pcmDataSize} bytes`);
 
   // Create WAV header for the PCM data
   const wavHeader = createWavHeader(pcmDataSize);
@@ -368,21 +430,23 @@ function handleFlushed() {
   const completeAudioBlob = new Blob([wavHeader, ...state.currentGeneration.audioChunks], { type: 'audio/wav' });
   console.log(`Complete WAV file size: ${completeAudioBlob.size} bytes (${wavHeader.length} byte header + ${pcmDataSize} byte data)`);
 
-  // Add to queue
+  // Add to queue with detailed metrics
   const queueItem = {
     id: state.nextId++,
     text: state.currentGeneration.text,
     model: state.currentGeneration.model,
     audioBlob: completeAudioBlob,
     latency: latency,
+    chunkCount: chunkCount,
+    audioDuration: audioDurationSeconds,
     status: 'complete',
     metadata: state.currentGeneration.metadata,
   };
 
   state.queue.unshift(queueItem); // Add to front of queue
 
-  // Update UI
-  showStatus('success', `Audio generated in ${latency}ms`);
+  // Update UI with detailed metrics
+  showStatus('success', `Generated ${chunkCount} chunks • ${audioDurationSeconds.toFixed(1)}s audio in ${(latency / 1000).toFixed(2)}s`);
   updateQueueDisplay();
 
   // Play the audio automatically
@@ -436,18 +500,47 @@ function playAudio(itemId) {
     return;
   }
 
-  console.log(`🔊 Playing audio for item ${itemId}`);
+  console.log('Playing audio for item:', itemId);
+
+  // Stop any currently playing audio
+  if (state.currentlyPlayingId !== null) {
+    stopAudio();
+  }
 
   // Creates an object URL from the Blob and plays the audio
   const audioUrl = URL.createObjectURL(item.audioBlob);
   audioPlayer.src = audioUrl;
   audioPlayer.play();
 
+  // Track which audio is playing
+  state.currentlyPlayingId = itemId;
+  updateQueueDisplay();
+
   audioPlayer.onended = () => {
     URL.revokeObjectURL(audioUrl);
+    state.currentlyPlayingId = null;
+    updateQueueDisplay();
     console.log('Playback complete');
   };
 }
+
+/**
+ * Stop the currently playing audio
+ */
+function stopAudio() {
+  if (audioPlayer) {
+    audioPlayer.pause();
+    audioPlayer.currentTime = 0;
+    audioPlayer.src = '';
+    state.currentlyPlayingId = null;
+    updateQueueDisplay();
+    console.log('Playback stopped');
+  }
+}
+
+// Make functions globally accessible for onclick handlers
+window.playAudio = playAudio;
+window.stopAudio = stopAudio;
 
 /**
  * Update the queue display in the UI
@@ -490,10 +583,18 @@ function updateQueueDisplay() {
         <span class="queue-item__status queue-item__status--${item.status}">
           ${getStatusIcon(item.status)} ${getStatusText(item.status)}
         </span>
-        ${item.latency ? `
+        ${item.chunkCount && item.audioDuration && item.latency ? `
+          <span class="queue-item__latency">
+            <i class="fas fa-layer-group"></i>
+            ${item.chunkCount} chunks
+          </span>
+          <span class="queue-item__latency">
+            <i class="fas fa-comment"></i>
+            ${item.audioDuration.toFixed(1)}s audio
+          </span>
           <span class="queue-item__latency">
             <i class="fas fa-clock"></i>
-            ${item.latency}ms
+            ${(item.latency / 1000).toFixed(2)}s generated
           </span>
         ` : ''}
       </div>
@@ -503,10 +604,20 @@ function updateQueueDisplay() {
           <button
             class="dg-btn dg-btn--primary dg-btn--sm"
             onclick="playAudio(${item.id})"
+            ${state.currentlyPlayingId === item.id ? 'disabled' : ''}
           >
             <i class="fas fa-play"></i>
-            Play Again
+            ${state.currentlyPlayingId === item.id ? 'Playing...' : 'Play Again'}
           </button>
+          ${state.currentlyPlayingId === item.id ? `
+            <button
+              class="dg-btn dg-btn--danger-ghost dg-btn--sm"
+              onclick="stopAudio()"
+            >
+              <i class="fas fa-stop"></i>
+              Stop Playing
+            </button>
+          ` : ''}
         </div>
       ` : ''}
     </div>
@@ -561,6 +672,7 @@ function showStatus(type, message) {
 function resetUI() {
   generateBtn.disabled = false;
   generateBtn.innerHTML = '<i class="fas fa-play"></i> Generate Audio';
+  cancelBtn.hidden = true;
 }
 
 /**

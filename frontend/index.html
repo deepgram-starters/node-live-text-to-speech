@@ -13,10 +13,10 @@
   - Queue-based generation with latency tracking
 
   CUSTOMIZATION GUIDE:
-  1. Modify voice models in app.js (will be populated by user)
+  1. Modify voice models in main.js (populated by user)
   2. Change colors by overriding CSS variables in <style> section
   3. Customize layout by modifying the structure below
-  4. Add features by extending app.js functions
+  4. Add features by extending main.js functions
 
   ARCHITECTURE:
   - Text input + model selection → WebSocket → Deepgram
@@ -56,7 +56,7 @@
     <script type="module" src="/main.js"></script>
 
     <!-- ======================================================================
-       CUSTOM STYLES - Using only Deepgram design system classes
+       CUSTOM STYLES - Using Deepgram design system
        ====================================================================== -->
 
     <style>
@@ -66,23 +66,58 @@
 
       body {
         background: var(--dg-charcoal, #1a1a1f);
-        margin: 0;
-        padding: 0;
+        min-height: 100vh;
+      }
+
+      .main-container {
+        max-width: 80rem;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+      }
+
+      @media (max-width: 768px) {
+        .main-container {
+          padding: 1rem;
+        }
       }
 
       /* ===================================================================
-       QUEUE ITEM STYLING
+       FORM LAYOUT - Side-by-side text input and model selection
+       =================================================================== */
+
+      .input-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      @media (min-width: 768px) {
+        .input-row {
+          grid-template-columns: 2fr 1fr;
+        }
+      }
+
+      .input-column {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      /* ===================================================================
+       QUEUE/HISTORY ITEM STYLING - Adapted from text-intelligence
        =================================================================== */
 
       .queue-list {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: 0.75rem;
       }
 
       .queue-item {
+        display: block;
         padding: 1rem;
-        border-radius: 0.5rem;
+        border-radius: 0.375rem;
         border: 1px solid var(--dg-pebble, #4e4e52);
         background: var(--dg-background, #0b0b0c);
         transition: all 0.2s;
@@ -175,48 +210,20 @@
        =================================================================== */
 
       .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        min-height: 20vh;
         text-align: center;
-        padding: 3rem 2rem;
+        padding: 3rem 1rem;
         color: var(--dg-muted, #949498);
       }
 
       .empty-state-icon {
         font-size: 3rem;
+        opacity: 0.3;
         margin-bottom: 1rem;
-        opacity: 0.5;
       }
 
       .empty-state-text {
-        font-size: 0.9rem;
+        font-size: 0.875rem;
         line-height: 1.6;
-      }
-
-      /* ===================================================================
-       FORM LAYOUT - Side-by-side text input and model selection
-       =================================================================== */
-
-      .input-row {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 1rem;
-        margin-bottom: 1.5rem;
-      }
-
-      @media (min-width: 768px) {
-        .input-row {
-          grid-template-columns: 2fr 1fr;
-        }
-      }
-
-      .input-column {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
       }
 
       /* ===================================================================
@@ -239,145 +246,180 @@
           transform: rotate(360deg);
         }
       }
+
+      /* Form input styling */
+      .dg-input {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        background: var(--dg-background, #0b0b0c);
+        border: 2px solid var(--dg-pebble, #4e4e52);
+        border-radius: 0.5rem;
+        color: var(--dg-fog, #edede2);
+        font-family: inherit;
+        font-size: 0.875rem;
+        transition: border-color 0.2s;
+      }
+
+      .dg-input:focus {
+        outline: none;
+        border-color: var(--dg-primary, #13ef95);
+      }
+
+      .dg-input::placeholder {
+        color: var(--dg-muted, #949498);
+      }
+
+      .dg-select {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        background: var(--dg-background, #0b0b0c);
+        border: 2px solid var(--dg-pebble, #4e4e52);
+        border-radius: 0.5rem;
+        color: var(--dg-fog, #edede2);
+        font-family: inherit;
+        font-size: 0.875rem;
+        cursor: pointer;
+      }
     </style>
   </head>
 
   <body>
     <!-- ======================================================================
-       MAIN CONTAINER
+       HEADER - Top navigation bar
        ====================================================================== -->
 
-    <div
-      class="dg-container"
-      style="max-width: 1200px; margin: 0 auto; padding: 2rem 1rem"
+    <header
+      class="dg-section dg-section--compact"
+      style="border-bottom: 1px solid rgba(255, 255, 255, 0.1)"
     >
-      <!-- ====================================================================
-         HEADER
-         ==================================================================== -->
-
-      <header
-        style="
-          margin-bottom: 2rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        "
-      >
-        <div>
-          <h1 class="dg-heading-1" style="margin: 0 0 0.5rem 0">
-            <i
-              class="fas fa-microphone-lines"
-              style="color: var(--dg-primary, #13ef95)"
-            ></i>
-            Deepgram Live TTS
-          </h1>
-          <p class="dg-text-muted" style="margin: 0">
-            Real-time text-to-speech with WebSocket streaming
-          </p>
-        </div>
-        <a
-          href="https://developers.deepgram.com/docs/tts-ws"
-          target="_blank"
-          class="dg-btn dg-btn--ghost dg-btn--sm"
-        >
-          <i class="fas fa-book"></i> Docs
-        </a>
-      </header>
-
-      <!-- ====================================================================
-         CONFIGURATION CARD
-         ==================================================================== -->
-
-      <div class="dg-card" style="margin-bottom: 2rem">
-        <div class="dg-card__header">
-          <h2 class="dg-card__title">
-            <i class="fas fa-sliders"></i>
-            Text Input Configuration
-          </h2>
-        </div>
-
-        <div class="dg-card__body">
-          <!-- Text Input (left) and Model Selection (right) -->
-          <div class="input-row">
-            <!-- Left column: Text input -->
-            <div class="input-column">
-              <label for="textInput" class="dg-label"> Text to Convert </label>
-              <textarea
-                id="textInput"
-                class="dg-input"
-                rows="4"
-                placeholder="Enter the text you want to convert to speech..."
-                style="resize: vertical; font-family: inherit"
-              ></textarea>
-            </div>
-            <!-- Right column: Model selection + Generate button -->
-            <div class="input-column">
-              <label for="modelSelect" class="dg-label"> Voice Model </label>
-              <select id="modelSelect" class="dg-select">
-                <option value="aura-2-thalia-en">
-                  Thalia (Female American English)
-                </option>
-                <option value="aura-2-theia-en">
-                  Theia (Female Australian English)
-                </option>
-                <option value="aura-2-pandora-en">
-                  Helena (Female British English)
-                </option>
-                <option value="aura-2-celeste-es">
-                  Celeste (Female Colombian Spanish)
-                </option>
-                <option value="aura-2-mars-en">
-                  Mars (Male American English)
-                </option>
-                <option value="aura-2-draco-en">
-                  Draco (Male British English)
-                </option>
-                <option value="aura-2-hyperion-en">
-                  Hyperion (Male Australian English)
-                </option>
-                <option value="aura-2-sirio-es">
-                  Sirio (Male Mexican Spanish)
-                </option>
-              </select>
-
-              <button
-                id="generateBtn"
-                class="dg-btn dg-btn--primary"
-                style="margin-top: auto"
-              >
-                <i class="fas fa-play"></i>
-                Generate Audio
-              </button>
-            </div>
-          </div>
-
-          <!-- Status indicator -->
-          <div
-            id="statusContainer"
-            class="dg-status-banner dg-status-banner--info hidden"
-            style="margin-top: 1rem"
-          >
-            <i id="statusIcon" class="fas fa-circle-info"></i>
-            <span id="statusMessage">Ready</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- ====================================================================
-         GENERATION QUEUE CARD
-         ==================================================================== -->
-
-      <div class="dg-card">
+      <div class="dg-constrain-width">
         <div
-          class="dg-card__header"
           style="
             display: flex;
             justify-content: space-between;
             align-items: center;
           "
         >
-          <h2 class="dg-card__title">
-            <i class="fas fa-list"></i>
+          <div>
+            <h1 class="dg-section-heading" style="margin-bottom: 0">
+              <i class="fa-solid fa-microphone-lines dg-text-primary"></i>
+              Deepgram Live TTS
+            </h1>
+          </div>
+          <div>
+            <a
+              href="https://developers.deepgram.com/docs/streaming-text-to-speech"
+              class="dg-btn dg-btn--ghost dg-btn--sm"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <i class="fa-solid fa-book"></i> Docs
+            </a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ======================================================================
+       MAIN CONTENT
+       ====================================================================== -->
+
+    <main class="main-container">
+      <!-- ====================================================================
+         CONFIGURATION SECTION
+         ==================================================================== -->
+
+      <section
+        class="dg-section dg-section--bordered"
+        style="margin-bottom: 2rem"
+      >
+        <h2 class="dg-section-heading">Text Input</h2>
+
+        <!-- Text Input (left) and Model Selection (right) -->
+        <div class="input-row">
+          <!-- Left column: Text input -->
+          <div class="input-column">
+            <label for="textInput" class="dg-form-label">
+              <i class="fa-solid fa-file-text"></i> Text to Convert
+            </label>
+            <textarea
+              id="textInput"
+              class="dg-input"
+              rows="8"
+              placeholder="Enter the text you want to convert to speech..."
+              style="resize: vertical; min-height: 250px"
+            ></textarea>
+          </div>
+
+          <!-- Right column: Model selection + Generate button -->
+          <div class="input-column">
+            <label for="modelSelect" class="dg-form-label"> Voice Model </label>
+            <select id="modelSelect" class="dg-select">
+              <option value="aura-2-thalia-en">
+                Thalia (Female American English)
+              </option>
+              <option value="aura-2-theia-en">
+                Theia (Female Australian English)
+              </option>
+              <option value="aura-2-pandora-en">
+                Helena (Female British English)
+              </option>
+              <option value="aura-2-celeste-es">
+                Celeste (Female Colombian Spanish)
+              </option>
+              <option value="aura-2-mars-en">
+                Mars (Male American English)
+              </option>
+              <option value="aura-2-draco-en">
+                Draco (Male British English)
+              </option>
+              <option value="aura-2-hyperion-en">
+                Hyperion (Male Australian English)
+              </option>
+              <option value="aura-2-sirio-es">
+                Sirio (Male Mexican Spanish)
+              </option>
+            </select>
+
+            <div class="dg-action-group" style="margin-top: auto">
+              <button id="generateBtn" class="dg-btn dg-btn--primary">
+                <i class="fa-solid fa-play"></i>
+                Generate Audio
+              </button>
+              <button id="cancelBtn" class="dg-btn dg-btn--secondary" hidden>
+                <i class="fa-solid fa-xmark"></i>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status indicator -->
+        <div
+          id="statusContainer"
+          class="dg-status dg-status--info"
+          style="margin-top: 1rem; display: none"
+        >
+          <i id="statusIcon" class="fa-solid fa-circle dg-status__icon"></i>
+          <span id="statusMessage">Ready</span>
+        </div>
+      </section>
+
+      <!-- ====================================================================
+         GENERATION QUEUE SECTION
+         ==================================================================== -->
+
+      <section class="dg-section dg-section--bordered">
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+          "
+        >
+          <h2 class="dg-section-heading" style="margin-bottom: 0">
+            <i class="fa-solid fa-list"></i>
             Generation Queue
             <span
               id="queueCount"
@@ -390,40 +432,51 @@
             id="clearQueueBtn"
             class="dg-btn dg-btn--ghost dg-btn--sm hidden"
           >
-            <i class="fas fa-trash"></i>
+            <i class="fa-solid fa-trash"></i>
             Clear All
           </button>
         </div>
 
-        <div class="dg-card__body">
-          <!-- Empty state (shown when queue is empty) -->
-          <div id="emptyState" class="empty-state">
-            <div class="empty-state-icon">
-              <i class="fas fa-waveform-lines"></i>
-            </div>
-            <div class="empty-state-text">
-              <p
-                style="
-                  margin: 0 0 0.5rem 0;
-                  font-size: 1rem;
-                  color: var(--dg-text, #fbfbff);
-                "
-              >
-                No audio generated yet
-              </p>
-              <p style="margin: 0">
-                Enter some text above and click "Generate Audio" to begin
-              </p>
-            </div>
+        <!-- Empty state (shown when queue is empty) -->
+        <div id="emptyState" class="empty-state">
+          <div class="empty-state-icon">
+            <i class="fa-solid fa-waveform-lines"></i>
           </div>
-
-          <!-- Queue list (populated dynamically by app.js) -->
-          <div id="queueList" class="queue-list hidden">
-            <!-- Queue items will be inserted here by JavaScript -->
+          <div class="empty-state-text">
+            <p
+              style="
+                margin: 0 0 0.5rem 0;
+                font-size: 1rem;
+                color: var(--dg-text, #fbfbff);
+              "
+            >
+              No audio generated yet
+            </p>
+            <p style="margin: 0">
+              Enter some text above and click "Generate Audio" to begin
+            </p>
           </div>
         </div>
-      </div>
-    </div>
+
+        <!-- Queue list (populated dynamically by main.js) -->
+        <div id="queueList" class="queue-list hidden">
+          <!-- Queue items will be inserted here by JavaScript -->
+        </div>
+      </section>
+    </main>
+
+    <!-- ======================================================================
+       FOOTER
+       ====================================================================== -->
+
+    <footer class="dg-footer">
+      <p>
+        Powered by
+        <a href="https://deepgram.com" class="dg-link" target="_blank"
+          >Deepgram</a
+        >
+      </p>
+    </footer>
 
     <!-- ======================================================================
        HIDDEN AUDIO ELEMENT (for playback)
