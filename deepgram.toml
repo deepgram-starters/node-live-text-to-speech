@@ -2,7 +2,7 @@
 title = "Node Live Text-to-Speech Starter"
 description = "Get started using Deepgram's Live Text-to-Speech with this Node demo app"
 author = "Deepgram DX Team <devrel@deepgram.com> (https://developers.deepgram.com)"
-useCase = "Live"
+useCase = "Live TTS"
 language = "JavaScript"
 framework = "Node"
 sdk = "4.11.2"
