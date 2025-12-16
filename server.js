@@ -396,14 +396,7 @@ if (CONFIG.isDevelopment) {
   console.log('Production mode: Serving static files');
 
   const distPath = path.join(__dirname, 'frontend', 'dist');
-
-  // Serve static files from frontend/dist
   app.use(express.static(distPath));
-
-  // SPA fallback: serve index.html for all routes
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
-  });
 }
 
 server.listen(CONFIG.port, CONFIG.host, () => {
