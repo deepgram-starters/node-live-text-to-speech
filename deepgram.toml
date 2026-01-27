@@ -6,6 +6,7 @@ useCase = "Live TTS"
 language = "JavaScript"
 framework = "Node"
 sdk = "4.11.2"
+repository = "https://github.com/deepgram-starters/node-live-text-to-speech"
 
 [pre-build]
 command = "pnpm run install:all"
