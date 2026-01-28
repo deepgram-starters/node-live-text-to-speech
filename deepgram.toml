@@ -1,5 +1,5 @@
 [meta]
-title = "Node Live Text-to-Speech Starter"
+title = "Node Live Text-to-Speech"
 description = "Get started using Deepgram's Live Text-to-Speech with this Node demo app"
 author = "Deepgram DX Team <devrel@deepgram.com> (https://developers.deepgram.com)"
 useCase = "Live TTS"
