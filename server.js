@@ -16,9 +16,9 @@ const __dirname = path.dirname(__filename);
 
 // Application configuration
 const CONFIG = {
-  port: process.env.PORT || 3000,
+  port: process.env.PORT || 8080,
   host: process.env.HOST || '0.0.0.0',
-  vitePort: 8081, // Must match vite.config.js port
+  vitePort: process.env.VITE_PORT || 5173,
   isDevelopment: process.env.NODE_ENV === 'development',
 };
 
@@ -49,22 +49,8 @@ const wss = new WebSocketServer({ noServer: true });
 // Track active WebSocket connections for graceful shutdown
 const activeConnections = new Set();
 
-/**
- * Handles WebSocket upgrade requests
- */
-server.on('upgrade', (request, socket, head) => {
-  const url = new URL(request.url, `http://${request.headers.host}`);
-
-  // Only handle upgrades for our TTS endpoint
-  if (url.pathname === '/live-tts/stream') {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request);
-    });
-  } else {
-    // Reject upgrade requests to other paths
-    socket.destroy();
-  }
-});
+// Store viteProxy for WebSocket upgrade handling in dev mode
+let viteProxy = null;
 
 
 /**
@@ -382,16 +368,37 @@ wss.on('connection', (clientWs, request) => {
  * This ensures users always access the app at http://localhost:3000
  */
 if (CONFIG.isDevelopment) {
-  console.log('Development mode: Proxying to Vite dev server');
+  console.log(`Development mode: Proxying to Vite dev server on port ${CONFIG.vitePort}`);
 
-  // Proxy all requests to Vite (which runs on port 8081)
-  app.use(
-    createProxyMiddleware({
-      target: `http://localhost:${CONFIG.vitePort}`,
-      changeOrigin: true,
-      ws: true, // Proxy WebSocket connections too
-    })
-  );
+  // Create proxy middleware for HTTP requests only (no WebSocket)
+  viteProxy = createProxyMiddleware({
+    target: `http://localhost:${CONFIG.vitePort}`,
+    changeOrigin: true,
+    ws: false, // Disable automatic WebSocket proxying - we'll handle it manually
+  });
+
+  app.use('/', viteProxy);
+
+  // Manually handle WebSocket upgrades at the server level
+  // This allows us to selectively proxy based on path
+  server.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url, 'http://localhost').pathname;
+
+    console.log(`WebSocket upgrade request for: ${pathname}`);
+
+    // Backend handles /live-tts/stream WebSocket connections directly
+    if (pathname === '/live-tts/stream') {
+      console.log('Backend handling /live-tts/stream WebSocket');
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+      return;
+    }
+
+    // Forward all other WebSocket connections (Vite HMR) to Vite
+    console.log('Proxying WebSocket to Vite');
+    viteProxy.upgrade(request, socket, head);
+  });
 } else {
   console.log('Production mode: Serving static files');
 
@@ -406,7 +413,7 @@ server.listen(CONFIG.port, CONFIG.host, () => {
   console.log(`WebSocket endpoint: ws://localhost:${CONFIG.port}/live-tts/stream`);
   console.log(`Environment: ${CONFIG.isDevelopment ? 'development' : 'production'}`);
   console.log('');
-  console.log('👉 Open your browser to: http://localhost:3000');
+  console.log(`👉 Open your browser to: http://localhost:${CONFIG.port}`);
   console.log('');
 });
 
