@@ -27,7 +27,7 @@ const CONFIG = {
   deepgramTtsUrl: 'wss://api.deepgram.com/v1/speak',
   port: process.env.PORT || 8080,
   host: process.env.HOST || '0.0.0.0',
-  vitePort: process.env.VITE_PORT || 5173,
+  vitePort: process.env.VITE_PORT || 8081,
   isDevelopment: process.env.NODE_ENV === 'development',
 };
 
@@ -45,7 +45,18 @@ app.use(express.json());
 // API ROUTES
 // ============================================================================
 
-// Metadata endpoint - returns info from deepgram.toml
+// Metadata endpoint (standardized) - required for standardization compliance
+app.get('/api/metadata', (req, res) => {
+  res.json({
+    name: "Node Live Text-to-Speech Starter",
+    feature: "live-text-to-speech",
+    language: "JavaScript",
+    framework: "Node",
+    version: "1.0.0"
+  });
+});
+
+// Legacy metadata endpoint - returns info from deepgram.toml
 app.get('/metadata', (req, res) => {
   try {
     const tomlPath = path.join(__dirname, 'deepgram.toml');
