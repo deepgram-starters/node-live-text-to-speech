@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "description": "Live text-to-speech from text using Deepgram",
-  "type": "module",
   "main": "server.js",
   "packageManager": "pnpm@10.0.0",
   "engines": {
@@ -39,11 +38,11 @@
   "homepage": "https://github.com/deepgram-starters/node-live-text-to-speech#readme",
   "dependencies": {
     "@deepgram/sdk": "4.11.2",
-    "dotenv": "16.4.7",
+    "dotenv": "17.2.3",
     "express": "5.2.1",
     "http-proxy-middleware": "3.0.5",
     "npm-run-all": "4.1.5",
-    "toml": "^3.0.0",
+    "toml": "3.0.0",
     "ws": "8.18.0"
   },
   "devDependencies": {
