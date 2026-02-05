@@ -111,6 +111,10 @@ wss.on('connection', async (clientWs, request) => {
     // Forward all messages from Deepgram to client
     deepgramWs.on('open', () => {
       console.log('✓ Connected to Deepgram TTS API');
+      // Notify client that connection is ready
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(JSON.stringify({ type: 'Open' }));
+      }
     });
 
     deepgramWs.on('message', (data, isBinary) => {
