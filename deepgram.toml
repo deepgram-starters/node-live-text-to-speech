@@ -4,9 +4,10 @@ description = "Get started using Deepgram's Live Text-to-Speech with this Node d
 author = "Deepgram DX Team <devrel@deepgram.com> (https://developers.deepgram.com)"
 repository = "https://github.com/deepgram-starters/node-live-text-to-speech"
 useCase = "live-text-to-speech"
-language = "JavaScript"
-framework = "Node"
+language = "javascript"
+framework = "node"
 sdk = "N/A"
+tags = ["live-text-to-speech", "live-tts", "streaming-tts", "real-time-tts", "streaming-text-to-speech", "javascript", "node"]
 
 [check]
 command = ["command -v git", "command -v node", "command -v pnpm"]
