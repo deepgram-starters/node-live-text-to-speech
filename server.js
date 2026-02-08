@@ -3,6 +3,8 @@
  *
  * Simple WebSocket proxy to Deepgram's Live TTS API.
  * Forwards all messages (JSON and binary) bidirectionally between client and Deepgram.
+ *
+ * WebSocket endpoint: /api/live-text-to-speech
  */
 
 const { WebSocketServer, WebSocket } = require('ws');
@@ -21,7 +23,6 @@ const CONFIG = {
   deepgramTtsUrl: 'wss://api.deepgram.com/v1/speak',
   port: process.env.PORT || 8081,
   host: process.env.HOST || '0.0.0.0',
-  frontendPort: process.env.FRONTEND_PORT || 8080,
 };
 
 // Validate required environment variables
@@ -34,14 +35,7 @@ if (!CONFIG.deepgramApiKey) {
 const app = express();
 app.use(express.json());
 
-// Enable CORS for frontend
-app.use(cors({
-  origin: [
-    `http://localhost:${CONFIG.frontendPort}`,
-    `http://127.0.0.1:${CONFIG.frontendPort}`
-  ],
-  credentials: true
-}));
+app.use(cors()); // Enable CORS (wildcard is safe -- same-origin via Vite proxy / Caddy in production)
 
 // ============================================================================
 // API ROUTES
@@ -77,12 +71,12 @@ const server = createServer(app);
 // Create WebSocket server for TTS endpoint
 const wss = new WebSocketServer({
   server,
-  path: '/tts/stream'
+  path: '/api/live-text-to-speech'
 });
 
 // Handle WebSocket connections - simple pass-through proxy
 wss.on('connection', async (clientWs, request) => {
-  console.log('Client connected to /tts/stream');
+  console.log('Client connected to /api/live-text-to-speech');
 
   try {
     // Parse query parameters from the WebSocket URL
@@ -184,10 +178,9 @@ server.listen(CONFIG.port, CONFIG.host, () => {
   console.log('');
   console.log('======================================================================');
   console.log(`🚀 Backend API Server running at http://localhost:${CONFIG.port}`);
-  console.log(`📡 CORS enabled for http://localhost:${CONFIG.frontendPort}`);
-  console.log(`📡 WebSocket endpoint: ws://localhost:${CONFIG.port}/tts/stream`);
   console.log('');
-  console.log(`💡 Frontend should be running on http://localhost:${CONFIG.frontendPort}`);
+  console.log(`📡 WS   /api/live-text-to-speech`);
+  console.log(`📡 GET  /api/metadata`);
   console.log('======================================================================');
   console.log('');
 });
