@@ -6,7 +6,7 @@ repository = "https://github.com/deepgram-starters/node-live-text-to-speech"
 useCase = "live-text-to-speech"
 language = "javascript"
 framework = "node"
-sdk = "N/A"
+sdk = "@deepgram/sdk"
 tags = ["live-text-to-speech", "live-tts", "streaming-tts", "real-time-tts", "streaming-text-to-speech", "javascript", "node"]
 
 [check]
