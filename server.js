@@ -243,10 +243,19 @@ wss.on('connection', async (clientWs, request) => {
   }
 
   // Deepgram -> browser (binary audio + JSON control)
+  //
+  // Binary audio arrives from the SDK socket as a Blob and needs an async
+  // conversion (`data.arrayBuffer()`) before it can be forwarded, while JSON
+  // control frames (Flushed / Cleared / ...) forward synchronously. Firing each
+  // forward independently lets a synchronous control frame overtake the still-
+  // converting final audio chunk, clipping the audio tail. Serialize every
+  // forward through a promise chain so the browser receives frames in the exact
+  // order Deepgram sent them.
+  let sendChain = Promise.resolve();
   dgSocket.on('message', (data) => {
-    forwardToBrowser(clientWs, data).catch((err) =>
-      console.error('Failed to forward Deepgram message:', err)
-    );
+    sendChain = sendChain
+      .then(() => forwardToBrowser(clientWs, data))
+      .catch((err) => console.error('Failed to forward Deepgram message:', err));
   });
 
   dgSocket.on('open', () => {
