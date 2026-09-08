@@ -220,7 +220,7 @@ wss.on('connection', async (clientWs, request) => {
     return;
   }
 
-  // Route a control message (Speak / Flush / Close) from the browser to the
+  // Route a control message (Speak / Flush / Clear / Close) from the browser to the
   // matching SDK method.
   function dispatchToDeepgram(msg) {
     try {
@@ -230,6 +230,9 @@ wss.on('connection', async (clientWs, request) => {
           break;
         case 'Flush':
           dgSocket.sendFlush({ type: 'Flush' });
+          break;
+        case 'Clear':
+          dgSocket.sendClear({ type: 'Clear' });
           break;
         case 'Close':
           dgSocket.sendClose({ type: 'Close' });
@@ -263,7 +266,7 @@ wss.on('connection', async (clientWs, request) => {
   });
 
   dgSocket.on('error', (error) => {
-    console.error('Deepgram socket error:', error);
+    console.error('Deepgram socket error:', error?.message ?? error);
     if (clientWs.readyState === WebSocket.OPEN) {
       clientWs.send(JSON.stringify({
         type: 'Error',
@@ -309,7 +312,7 @@ wss.on('connection', async (clientWs, request) => {
 
   // Handle client errors
   clientWs.on('error', (error) => {
-    console.error('Client WebSocket error:', error);
+    console.error('Client WebSocket error:', error?.message ?? error);
     try {
       dgSocket.close();
     } catch {
@@ -325,8 +328,13 @@ wss.on('connection', async (clientWs, request) => {
     for (const msg of pending) dispatchToDeepgram(msg);
     pending.length = 0;
   } catch (error) {
-    console.error('Deepgram connection did not open:', error);
+    console.error('Deepgram connection did not open:', error?.message ?? error);
     if (clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify({
+        type: 'Error',
+        description: 'Failed to connect to Deepgram TTS',
+        code: 'CONNECTION_FAILED'
+      }));
       clientWs.close(1011, 'Deepgram connection failed to open');
     }
   }
