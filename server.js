@@ -7,11 +7,11 @@
  *
  * The Deepgram side goes through the SDK, which manages the WebSocket, auth,
  * and — critically — binary-audio framing. The browser-facing side is
- * unchanged: the frontend sends JSON control messages (Speak / Flush / Close)
+ * unchanged: the frontend sends JSON control messages (Speak / Flush / Clear / Close)
  * and receives Deepgram's binary audio plus JSON control messages as before.
  *
  * Flow:
- *   browser --(JSON control: Speak/Flush/Close)--> backend --(SDK)--> Deepgram
+ *   browser --(JSON control: Speak/Flush/Clear/Close)--> backend --(SDK)--> Deepgram
  *   browser <--(binary audio + JSON control)------ backend <--(SDK)-- Deepgram
  *
  * Routes:
@@ -199,22 +199,36 @@ wss.on('connection', async (clientWs, request) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
   const model = url.searchParams.get('model') || 'aura-asteria-en';
   const encoding = url.searchParams.get('encoding') || 'linear16';
-  const sample_rate = url.searchParams.get('sample_rate') || '48000';
+  const sampleRate = Number(url.searchParams.get('sample_rate') || 48000);
   const container = url.searchParams.get('container') || 'none';
 
-  console.log(`Connecting to Deepgram TTS: model=${model}, encoding=${encoding}, sample_rate=${sample_rate}, container=${container}`);
+  console.log(`Connecting to Deepgram TTS: model=${model}, encoding=${encoding}, sample_rate=${sampleRate}, container=${container}`);
 
   // Buffer any browser messages that arrive before the Deepgram socket is open.
   let dgReady = false;
+  let dgClosed = false;
+  let lastDgError = null;
   const pending = [];
 
   let dgSocket;
   try {
-    dgSocket = await deepgram.speak.v1.createConnection({ model, encoding, sample_rate, container });
+    dgSocket = await deepgram.speak.v1.createConnection({
+      model,
+      encoding,
+      sample_rate: sampleRate,
+      queryParams: { container },
+      reconnectAttempts: 0,
+    });
   } catch (error) {
-    console.error('Failed to create Deepgram connection:', error);
+    const message = error?.message ?? String(error);
+    console.error('Failed to create Deepgram connection:', message);
     if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.close(1011, 'Failed to reach Deepgram');
+      clientWs.send(JSON.stringify({
+        type: 'Error',
+        description: 'Failed to connect to Deepgram TTS',
+        code: 'CONNECTION_FAILED',
+      }));
+      clientWs.close(1011, 'Deepgram connection failed to open');
     }
     activeConnections.delete(clientWs);
     return;
@@ -266,21 +280,39 @@ wss.on('connection', async (clientWs, request) => {
   });
 
   dgSocket.on('error', (error) => {
-    console.error('Deepgram socket error:', error?.message ?? error);
-    if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(JSON.stringify({
-        type: 'Error',
-        description: error.message || 'Deepgram connection error',
-        code: 'PROVIDER_ERROR'
-      }));
-    }
+    const message = error?.message ?? String(error);
+    console.error('Deepgram socket error:', message);
+    lastDgError = message;
+    if (!dgReady) return;
+
+    sendChain = sendChain.then(() => {
+      if (clientWs.readyState === WebSocket.OPEN) {
+        clientWs.send(JSON.stringify({
+          type: 'Error',
+          description: message || 'Deepgram connection error',
+          code: 'PROVIDER_ERROR',
+        }));
+      }
+    });
   });
 
   dgSocket.on('close', () => {
+    if (dgClosed) return;
+    dgClosed = true;
     console.log('Deepgram connection closed');
-    if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.close(1000, 'Deepgram connection closed');
-    }
+    sendChain = sendChain.then(() => {
+      if (clientWs.readyState !== WebSocket.OPEN) return;
+      if (!dgReady) {
+        clientWs.send(JSON.stringify({
+          type: 'Error',
+          description: `Failed to connect to Deepgram TTS${lastDgError ? `: ${lastDgError}` : ''}`,
+          code: 'CONNECTION_FAILED',
+        }));
+        clientWs.close(1011, 'Deepgram connection failed to open');
+      } else {
+        clientWs.close(1000, 'Deepgram connection closed');
+      }
+    });
   });
 
   // browser -> Deepgram (JSON control, buffered until the Deepgram socket is open)
@@ -329,14 +361,6 @@ wss.on('connection', async (clientWs, request) => {
     pending.length = 0;
   } catch (error) {
     console.error('Deepgram connection did not open:', error?.message ?? error);
-    if (clientWs.readyState === WebSocket.OPEN) {
-      clientWs.send(JSON.stringify({
-        type: 'Error',
-        description: 'Failed to connect to Deepgram TTS',
-        code: 'CONNECTION_FAILED'
-      }));
-      clientWs.close(1011, 'Deepgram connection failed to open');
-    }
   }
 });
 
