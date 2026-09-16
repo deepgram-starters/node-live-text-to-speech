@@ -5,11 +5,6 @@
   "description": "Live text-to-speech from text using Deepgram",
   "main": "server.js",
   "packageManager": "pnpm@10.0.0",
-  "pnpm": {
-    "overrides": {
-      "qs": "6.16.0"
-    }
-  },
   "engines": {
     "node": ">=24.0.0",
     "pnpm": ">=10.0.0"
