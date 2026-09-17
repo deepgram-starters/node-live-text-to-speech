@@ -90,8 +90,8 @@ The WebSocket connection URL passes parameters to the backend. Update the defaul
 | Parameter | Default | Options | Effect |
 |-----------|---------|---------|--------|
 | `model` | `aura-asteria-en` | Any aura-* voice | Voice selection |
-| `encoding` | `linear16` | `linear16`, `mp3`, `opus`, `mulaw`, `alaw` | Audio encoding |
-| `sample_rate` | `48000` | `8000`-`48000` | Audio sample rate |
+| `encoding` | `linear16` | `linear16` (8000/16000/24000/32000/44100/48000 Hz), `mulaw` (8000/16000 Hz), `alaw` (8000 Hz) | Audio encoding |
+| `sample_rate` | `48000` | One of `8000`, `16000`, `24000`, `32000`, `44100`, `48000` - must be a rate the chosen encoding supports | Audio sample rate |
 | `container` | `none` | `none` | Audio container |
 
 **Important:** The frontend audio playback is configured for Linear16 at 48kHz. If you change encoding or sample_rate, you MUST update the frontend's AudioContext and PCM conversion code in `frontend/main.js`.
@@ -154,10 +154,10 @@ chore(deps): update frontend submodule
 ## Testing
 
 ```bash
-# Run conformance tests (requires app to be running)
+# Run unit tests
 make test
 
-# Manual endpoint check
+# Manual endpoint check (requires the app to be running)
 curl -sf http://localhost:8081/api/metadata | python3 -m json.tool
 curl -sf http://localhost:8081/api/session | python3 -m json.tool
 ```

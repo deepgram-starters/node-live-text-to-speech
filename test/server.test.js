@@ -3,7 +3,7 @@ const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const { createServer } = require('node:http');
 const test = require('node:test');
-const { WebSocket } = require('ws');
+const { WebSocket, WebSocketServer } = require('ws');
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -98,4 +98,71 @@ test('reports an upstream handshake failure before closing without reconnecting'
     code: 'CONNECTION_FAILED',
   }]);
   assert.doesNotMatch(JSON.stringify(result.messages), /test-key/);
+});
+
+test('forwards all burst audio before Flushed', async (t) => {
+  const upstream = createServer();
+  const upstreamWss = new WebSocketServer({ noServer: true });
+  upstream.on('upgrade', (request, socket, head) => {
+    upstreamWss.handleUpgrade(request, socket, head, (ws) => {
+      upstreamWss.emit('connection', ws, request);
+    });
+  });
+  upstreamWss.on('connection', (socket) => {
+    // Send the frames synchronously so Blob conversions race the control frame.
+    for (let index = 0; index < 8; index += 1) {
+      socket.send(Buffer.from([index]));
+    }
+    socket.send(JSON.stringify({ type: 'Flushed' }));
+  });
+  upstream.listen(0, '127.0.0.1');
+  await once(upstream, 'listening');
+  const upstreamPort = upstream.address().port;
+  t.after(async () => {
+    upstreamWss.close();
+    upstream.close();
+    await once(upstream, 'close');
+  });
+
+  const appPort = await getAvailablePort();
+  const app = spawn(process.execPath, ['server.js'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      DEEPGRAM_API_KEY: 'test-key',
+      DEEPGRAM_BASE_URL: `ws://127.0.0.1:${upstreamPort}`,
+      HOST: '127.0.0.1',
+      PORT: String(appPort),
+      SESSION_SECRET: 'test-session-secret',
+    },
+    stdio: 'ignore',
+  });
+  t.after(() => stop(app));
+  await waitForServer(`http://127.0.0.1:${appPort}/api/metadata`, app);
+
+  const { token } = await (await fetch(`http://127.0.0.1:${appPort}/api/session`)).json();
+  const client = new WebSocket(
+    `ws://127.0.0.1:${appPort}/api/live-text-to-speech`,
+    `access_token.${token}`
+  );
+  const messages = await new Promise((resolve, reject) => {
+    const received = [];
+    const timer = setTimeout(() => reject(new Error('Timed out waiting for Flushed')), 3000);
+    client.on('message', (data, isBinary) => {
+      const type = isBinary ? 'audio' : JSON.parse(data).type;
+      received.push(type);
+      if (type === 'Flushed') {
+        setTimeout(() => {
+          clearTimeout(timer);
+          client.close();
+          resolve(received);
+        }, 100);
+      }
+    });
+    client.on('error', reject);
+  });
+
+  assert.equal(messages.filter(message => message === 'audio').length, 8);
+  assert.equal(messages.at(-1), 'Flushed');
+  assert.equal(messages.slice(messages.indexOf('Flushed') + 1).includes('audio'), false);
 });
