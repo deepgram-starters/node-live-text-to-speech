@@ -157,6 +157,9 @@ chore(deps): update frontend submodule
 # Run unit tests
 make test
 
+# Run contract conformance tests (requires .env and initialized submodules)
+make test-contracts
+
 # Manual endpoint check (requires the app to be running)
 curl -sf http://localhost:8081/api/metadata | python3 -m json.tool
 curl -sf http://localhost:8081/api/session | python3 -m json.tool

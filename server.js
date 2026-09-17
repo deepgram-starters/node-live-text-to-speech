@@ -199,14 +199,28 @@ wss.on('connection', async (clientWs, request) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
   const model = url.searchParams.get('model') || 'aura-asteria-en';
   const encoding = url.searchParams.get('encoding') || 'linear16';
-  const sampleRate = Number(url.searchParams.get('sample_rate') || 48000);
+  const sampleRateParam = url.searchParams.get('sample_rate');
+  const sampleRate = sampleRateParam === null ? 48000 : Number(sampleRateParam);
   const container = url.searchParams.get('container') || 'none';
+
+  if (!Number.isInteger(sampleRate) || sampleRate <= 0) {
+    console.warn(`Rejecting invalid sample_rate: ${sampleRateParam}`);
+    clientWs.send(JSON.stringify({
+      type: 'Error',
+      description: 'sample_rate must be a positive integer',
+      code: 'INVALID_REQUEST',
+    }));
+    clientWs.close(1008, 'Invalid sample_rate');
+    activeConnections.delete(clientWs);
+    return;
+  }
 
   console.log(`Connecting to Deepgram TTS: model=${model}, encoding=${encoding}, sample_rate=${sampleRate}, container=${container}`);
 
   // Buffer any browser messages that arrive before the Deepgram socket is open.
   let dgReady = false;
   let dgClosed = false;
+  let clientRequestedClose = false;
   let lastDgError = null;
   const pending = [];
 
@@ -283,23 +297,14 @@ wss.on('connection', async (clientWs, request) => {
     const message = error?.message ?? String(error);
     console.error('Deepgram socket error:', message);
     lastDgError = message;
-    if (!dgReady) return;
-
-    sendChain = sendChain.then(() => {
-      if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(JSON.stringify({
-          type: 'Error',
-          description: message || 'Deepgram connection error',
-          code: 'PROVIDER_ERROR',
-        }));
-      }
-    });
   });
 
-  dgSocket.on('close', () => {
+  dgSocket.on('close', (event) => {
     if (dgClosed) return;
     dgClosed = true;
     console.log('Deepgram connection closed');
+    // The SDK emits close before error for failed handshakes and terminal errors.
+    // Reading lastDgError in this queued callback lets that later error listener run first.
     sendChain = sendChain.then(() => {
       if (clientWs.readyState !== WebSocket.OPEN) return;
       if (!dgReady) {
@@ -309,6 +314,13 @@ wss.on('connection', async (clientWs, request) => {
           code: 'CONNECTION_FAILED',
         }));
         clientWs.close(1011, 'Deepgram connection failed to open');
+      } else if (!clientRequestedClose && (lastDgError || (typeof event?.code === 'number' && event.code !== 1000))) {
+        clientWs.send(JSON.stringify({
+          type: 'Error',
+          description: lastDgError || 'Deepgram connection closed unexpectedly',
+          code: 'PROVIDER_ERROR',
+        }));
+        clientWs.close(1011, 'Deepgram connection failed');
       } else {
         clientWs.close(1000, 'Deepgram connection closed');
       }
@@ -324,6 +336,7 @@ wss.on('connection', async (clientWs, request) => {
       console.warn('Ignoring non-JSON message from client');
       return;
     }
+    if (msg.type === 'Close') clientRequestedClose = true;
     if (!dgReady) {
       pending.push(msg);
       return;

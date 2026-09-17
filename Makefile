@@ -4,7 +4,7 @@
 # Use corepack to ensure correct pnpm version
 PNPM := corepack pnpm
 
-.PHONY: help check check-prereqs init install install-frontend start start-backend start-frontend test update clean status
+.PHONY: help check check-prereqs init install install-frontend start start-backend start-frontend test test-contracts update clean status
 
 # Default target: show help
 help:
@@ -22,6 +22,7 @@ help:
 	@echo "  make start-backend     Start backend API server only (port 8081)"
 	@echo "  make start-frontend    Start frontend dev server only (port 8080)"
 	@echo "  make test              Run unit tests"
+	@echo "  make test-contracts    Run contract conformance tests"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make update            Update submodules to latest commits"
@@ -97,6 +98,19 @@ start-frontend:
 test:
 	@echo "==> Running unit tests..."
 	$(PNPM) test
+
+# Run contract conformance tests
+test-contracts:
+	@if [ ! -f ".env" ]; then \
+		echo "❌ Error: .env file not found. Copy sample.env to .env and add your DEEPGRAM_API_KEY"; \
+		exit 1; \
+	fi
+	@if [ ! -d "contracts" ] || [ -z "$$(ls -A contracts)" ]; then \
+		echo "❌ Error: Contracts submodule not initialized. Run 'make init' first."; \
+		exit 1; \
+	fi
+	@echo "==> Running contract conformance tests..."
+	@bash contracts/tests/run-live-text-to-speech-app.sh
 
 # Update submodules to latest commits
 update:
