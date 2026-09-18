@@ -336,6 +336,16 @@ wss.on('connection', async (clientWs, request) => {
       console.warn('Ignoring non-JSON message from client');
       return;
     }
+    if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.type !== 'string') {
+      console.warn('Rejecting invalid client message');
+      clientWs.send(JSON.stringify({
+        type: 'Error',
+        description: 'message must be a JSON object with a string type',
+        code: 'INVALID_REQUEST',
+      }));
+      clientWs.close(1008, 'Invalid message');
+      return;
+    }
     if (msg.type === 'Close') clientRequestedClose = true;
     if (!dgReady) {
       pending.push(msg);

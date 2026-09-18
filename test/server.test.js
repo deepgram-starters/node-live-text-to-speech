@@ -155,6 +155,59 @@ test('rejects an invalid sample rate before connecting upstream', async (t) => {
   }]);
 });
 
+test('rejects a non-object control message without shutting down', async (t) => {
+  const upstream = createServer();
+  upstream.listen(0, '127.0.0.1');
+  await once(upstream, 'listening');
+  const upstreamPort = upstream.address().port;
+  t.after(async () => {
+    upstream.close();
+    await once(upstream, 'close');
+  });
+
+  const appPort = await getAvailablePort();
+  const app = spawn(process.execPath, ['server.js'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      DEEPGRAM_API_KEY: 'test-key',
+      DEEPGRAM_BASE_URL: `ws://127.0.0.1:${upstreamPort}`,
+      HOST: '127.0.0.1',
+      PORT: String(appPort),
+      SESSION_SECRET: 'test-session-secret',
+    },
+    stdio: 'ignore',
+  });
+  t.after(() => stop(app));
+  await waitForServer(`http://127.0.0.1:${appPort}/api/metadata`, app);
+
+  const { token } = await (await fetch(`http://127.0.0.1:${appPort}/api/session`)).json();
+  const client = new WebSocket(
+    `ws://127.0.0.1:${appPort}/api/live-text-to-speech`,
+    `access_token.${token}`
+  );
+  const result = await new Promise((resolve, reject) => {
+    const messages = [];
+    const timer = setTimeout(() => reject(new Error('Timed out waiting for invalid message')), 3000);
+    client.on('open', () => client.send('null'));
+    client.on('message', message => messages.push(JSON.parse(message)));
+    client.on('error', reject);
+    client.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code, messages });
+    });
+  });
+
+  assert.equal(result.code, 1008);
+  assert.deepEqual(result.messages, [{
+    type: 'Error',
+    description: 'message must be a JSON object with a string type',
+    code: 'INVALID_REQUEST',
+  }]);
+  assert.equal(app.exitCode, null);
+  assert.equal((await fetch(`http://127.0.0.1:${appPort}/api/metadata`)).ok, true);
+});
+
 test('reports an unexpected post-open upstream close before closing', async (t) => {
   const upstream = createServer();
   const upstreamWss = new WebSocketServer({ noServer: true });
