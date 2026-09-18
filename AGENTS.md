@@ -14,7 +14,7 @@ Node.js demo app for Deepgram Live Text-to-Speech.
 
 | File | Purpose |
 |------|---------|
-| `server.js` | Main backend — API endpoints and WebSocket proxy |
+| `server.js` | Main backend — API endpoints and WebSocket bridge |
 | `deepgram.toml` | Metadata, lifecycle commands, tags |
 | `Makefile` | Standardized build/run targets |
 | `sample.env` | Environment variable template |
@@ -67,7 +67,7 @@ make init
 
 ## Dependencies
 
-- **Backend:** `package.json` — Uses `corepack pnpm` — Node's built-in package manager version pinning.
+- **Backend:** `package.json` — Node.js, `@deepgram/sdk`, and `corepack pnpm`.
 - **Frontend:** `frontend/package.json` — Vite dev server
 - **Submodules:** `frontend/` (live-text-to-speech-html), `contracts/` (starter-contracts)
 
@@ -85,14 +85,14 @@ Frontend: `cd frontend && corepack pnpm install`
 ## Customization Guide
 
 ### Changing Default Parameters
-The WebSocket connection URL passes parameters to Deepgram. Modify these in the backend where the Deepgram URL is constructed:
+The WebSocket connection URL passes parameters to the backend. Update the defaults near the `deepgram.speak.v1.createConnection` call in `server.js`:
 
 | Parameter | Default | Options | Effect |
 |-----------|---------|---------|--------|
 | `model` | `aura-asteria-en` | Any aura-* voice | Voice selection |
-| `encoding` | `linear16` | `linear16`, `mp3`, `opus`, `mulaw`, `alaw` | Audio encoding |
-| `sample_rate` | `48000` | `8000`-`48000` | Audio sample rate |
-| `container` | `none` | `none`, `wav`, `ogg` | Audio container |
+| `encoding` | `linear16` | `linear16` (8000/16000/24000/32000/48000 Hz), `mulaw` (8000/16000 Hz), `alaw` (8000/16000 Hz) | Audio encoding |
+| `sample_rate` | `48000` | One of `8000`, `16000`, `24000`, `32000`, `48000` - must be a rate the chosen encoding supports | Audio sample rate |
+| `container` | `none` | `none` | Audio container |
 
 **Important:** The frontend audio playback is configured for Linear16 at 48kHz. If you change encoding or sample_rate, you MUST update the frontend's AudioContext and PCM conversion code in `frontend/main.js`.
 
@@ -154,10 +154,13 @@ chore(deps): update frontend submodule
 ## Testing
 
 ```bash
-# Run conformance tests (requires app to be running)
+# Run unit tests
 make test
 
-# Manual endpoint check
+# Run contract conformance tests (requires .env and initialized submodules)
+make test-contracts
+
+# Manual endpoint check (requires the app to be running)
 curl -sf http://localhost:8081/api/metadata | python3 -m json.tool
 curl -sf http://localhost:8081/api/session | python3 -m json.tool
 ```

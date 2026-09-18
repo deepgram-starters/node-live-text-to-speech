@@ -4,7 +4,7 @@
 # Use corepack to ensure correct pnpm version
 PNPM := corepack pnpm
 
-.PHONY: help check check-prereqs init install install-frontend start start-backend start-frontend test update clean status
+.PHONY: help check check-prereqs init install install-frontend start start-backend start-frontend test test-contracts update clean status
 
 # Default target: show help
 help:
@@ -21,7 +21,8 @@ help:
 	@echo "  make start             Start both backend and frontend servers in parallel"
 	@echo "  make start-backend     Start backend API server only (port 8081)"
 	@echo "  make start-frontend    Start frontend dev server only (port 8080)"
-	@echo "  make test              Run contract conformance tests"
+	@echo "  make test              Run unit tests"
+	@echo "  make test-contracts    Run contract conformance tests"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make update            Update submodules to latest commits"
@@ -93,8 +94,13 @@ start-frontend:
 	@echo "==> Starting frontend on http://localhost:8080"
 	cd frontend && $(PNPM) run dev -- --port 8080 --no-open
 
-# Run contract conformance tests
+# Run unit tests
 test:
+	@echo "==> Running unit tests..."
+	$(PNPM) test
+
+# Run contract conformance tests
+test-contracts:
 	@if [ ! -f ".env" ]; then \
 		echo "❌ Error: .env file not found. Copy sample.env to .env and add your DEEPGRAM_API_KEY"; \
 		exit 1; \
